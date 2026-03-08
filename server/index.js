@@ -132,6 +132,34 @@ app.post('/api/refresh-cache', async (req, res) => {
   }
 });
 
+let lastUpdateCheck = 0;
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+
+app.get('/api/check-updates', async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - lastUpdateCheck < UPDATE_CHECK_INTERVAL_MS) {
+      return res.json({ updated: false });
+    }
+    lastUpdateCheck = now;
+    const [mlDoc, ulDoc, mlData, ulData] = await Promise.all([
+      listCacheCol.findOne({ list: 'ml' }),
+      listCacheCol.findOne({ list: 'ul' }),
+      fetchFromFnafmml(`${FNAF_API}/maxmodes/list?list=ml&page=1`),
+      fetchFromFnafmml(`${FNAF_API}/maxmodes/list?list=ul&page=1`),
+    ]);
+    const mlChanged = (mlData.totalCount ?? 0) !== (mlDoc?.totalCount ?? 0);
+    const ulChanged = (ulData.totalCount ?? 0) !== (ulDoc?.totalCount ?? 0);
+    if (mlChanged || ulChanged) {
+      await refreshCache();
+      return res.json({ updated: true });
+    }
+    res.json({ updated: false });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) {

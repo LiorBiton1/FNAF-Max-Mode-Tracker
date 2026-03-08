@@ -253,6 +253,127 @@ body {
   min-width: 6rem;
 }
 
+/* Detail modal */
+.detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.detail-modal.hidden {
+  display: none !important;
+}
+
+.detail-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.detail-modal-content {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.detail-modal-header {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-thumb {
+  width: 120px;
+  height: 68px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--bg-dark);
+}
+
+.detail-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-header-text h2 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.detail-meta {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.detail-tags .tag {
+  font-size: 0.75rem;
+}
+
+.detail-modal-body {
+  padding: 1rem 1.5rem;
+}
+
+.detail-stats {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.detail-desc {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.detail-video {
+  margin-bottom: 1rem;
+}
+
+.detail-video-link {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.detail-video-link:hover {
+  text-decoration: underline;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.detail-actions a,
+.detail-actions button {
+  flex: 1;
+  min-width: 140px;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* Empty state */
 .empty-state {
   color: var(--text-muted);
@@ -289,6 +410,27 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
+}
+
+.completed-rank-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.completed-rank-toggle.hidden {
+  display: none !important;
+}
+
+.completed-rank-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.completed-rank-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
 }
 
 /* Progress bar */
@@ -400,27 +542,6 @@ body {
 
 .search-box button:hover {
   background: var(--accent-hover);
-}
-
-.refresh-btn {
-  padding: 0.5rem 1rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.15s ease;
-}
-
-.refresh-btn:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--accent);
-}
-
-.refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 /* Card container grid */

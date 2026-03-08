@@ -41,6 +41,7 @@ let idsInML = new Set();
 let idsInUL = new Set();
 const maxmodeDetailsById = new Map();
 let currentList = 'ml';
+let completedRankMode = 'ml';
 let currentPage = 1;
 let totalPages = 17;
 let totalCount = 845;
@@ -198,17 +199,19 @@ function getCompletedPageData(page, search) {
   const searchVal = (search || '').trim().toLowerCase();
   const fallback = (id) => ({
     id,
+    slug: '',
     title: 'Unknown',
     game: null,
     creator_name: '—',
+    description: '',
     thumbnail_url: '',
     ml_rank: null,
     ul_rank: null,
+    list_entry: null,
     maxmode_tags: [],
     calculated_enjoyment: null,
     rng_rating: null,
     avg_length_seconds: null,
-    list_entry: { position: null },
   });
   let items = [...completions].map((id) => {
     const d = maxmodeDetailsById.get(id);
@@ -223,7 +226,13 @@ function getCompletedPageData(page, search) {
         (m.creator_name || '').toLowerCase().includes(searchVal)
     );
   }
-  items.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+  const rankKey = completedRankMode === 'ml' ? 'ml_rank' : 'ul_rank';
+  items.sort((a, b) => {
+    const ra = a[rankKey] ?? 999999;
+    const rb = b[rankKey] ?? 999999;
+    if (ra !== rb) return ra - rb;
+    return (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+  });
   const totalCount = items.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / COMPLETED_PAGE_SIZE));
   const start = (page - 1) * COMPLETED_PAGE_SIZE;
@@ -283,9 +292,18 @@ function formatDuration(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function rankLabel(m, list) {
+  if (list === 'completed') {
+    const r = completedRankMode === 'ml' ? m.ml_rank : m.ul_rank;
+    return r != null ? `#${r}` : '—';
+  }
+  const r = m.ml_rank ?? m.ul_rank ?? m.list_entry?.position ?? '—';
+  return r === '—' ? '—' : `#${r}`;
+}
+
 function renderCard(m, list) {
   const completed = completions.has(m.id);
-  const rank = m.ml_rank ?? m.ul_rank ?? m.list_entry?.position ?? '—';
+  const rank = rankLabel(m, list);
   const tags = (m.maxmode_tags || []).map(t => t.tag?.name).filter(Boolean);
   const enjoyment = m.calculated_enjoyment ?? '—';
   const rng = m.rng_rating ?? '—';
@@ -304,15 +322,79 @@ function renderCard(m, list) {
       ${isMOTW ? '<span class="motw-badge">MOTW</span>' : ''}
     </div>
     <div class="card-body">
-      <h3 class="card-title">#${rank} ${escapeHtml(m.title)}</h3>
+      <h3 class="card-title">${rank !== '—' ? rank + ' ' : ''}${escapeHtml(m.title)}</h3>
       <p class="card-meta">${escapeHtml(m.game?.title || '—')} · ${escapeHtml(m.creator_name || '—')}</p>
       ${tags.length ? `<p class="card-tags">${tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</p>` : ''}
       <p class="card-stats">Enjoyment: ${enjoyment} · RNG: ${rng} · ~${duration}</p>
     </div>
   `;
 
-  card.addEventListener('click', () => toggleCompletion(m.id));
+  card.addEventListener('click', () => openDetailModal(m));
   return card;
+}
+
+function youtubeIdFromThumbnail(url) {
+  if (!url || typeof url !== 'string') return null;
+  const m = url.match(/img\.youtube\.com\/vi\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function openDetailModal(m) {
+  const d = typeof m === 'string' ? maxmodeDetailsById.get(m) : m;
+  if (!d) return;
+  const id = d.id;
+  const title = d.title || 'Unknown';
+  const meta = [d.game?.title ?? '', d.creator_name ?? ''].filter(Boolean).join(' · ') || '—';
+  const tags = (d.maxmode_tags || []).map(t => t.tag?.name).filter(Boolean);
+  const mlRank = d.ml_rank;
+  const ulRank = d.ul_rank;
+  const points = d.list_entry?.points_snapshot;
+  const enjoyment = d.calculated_enjoyment ?? '—';
+  const rng = d.rng_rating ?? '—';
+  const duration = formatDuration(d.avg_length_seconds);
+  const desc = d.description || '';
+  const completed = completions.has(id);
+  const videoId = youtubeIdFromThumbnail(d.thumbnail_url);
+
+  document.getElementById('detail-thumb').src = d.thumbnail_url || '';
+  document.getElementById('detail-title').textContent = title;
+  document.getElementById('detail-meta').textContent = meta;
+  document.getElementById('detail-tags').innerHTML = tags.length
+    ? tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('')
+    : '';
+  const statsParts = [];
+  if (mlRank != null) statsParts.push(`ML #${mlRank}`);
+  if (ulRank != null) statsParts.push(`UL #${ulRank}`);
+  if (points != null) statsParts.push(`Points: ${points}`);
+  statsParts.push(`RNG: ${rng}/5`);
+  statsParts.push(`Enjoyment: ${enjoyment}`);
+  statsParts.push(`~${duration}`);
+  document.getElementById('detail-stats').textContent = statsParts.join(' · ');
+  document.getElementById('detail-desc').textContent = desc;
+  document.getElementById('detail-desc').classList.toggle('hidden', !desc);
+
+  const videoEl = document.getElementById('detail-video');
+  if (videoId) {
+    videoEl.classList.remove('hidden');
+    videoEl.innerHTML = `
+      <a href="https://www.youtube.com/watch?v=${escapeHtml(videoId)}" target="_blank" rel="noopener" class="detail-video-link">
+        Watch video guide on YouTube →
+      </a>
+    `;
+  } else {
+    videoEl.classList.add('hidden');
+    videoEl.innerHTML = '';
+  }
+
+  const toggleBtn = document.getElementById('detail-toggle-btn');
+  toggleBtn.textContent = completed ? 'Remove from completed' : 'Mark complete';
+  toggleBtn.dataset.id = id;
+
+  document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+function hideDetailModal() {
+  document.getElementById('detail-modal').classList.add('hidden');
 }
 
 function escapeHtml(s) {
@@ -344,18 +426,22 @@ function addIdsFromPage(list, maxmodes) {
   for (const m of maxmodes || []) {
     if (m?.id) {
       ids.add(m.id);
+      const existing = maxmodeDetailsById.get(m.id);
       maxmodeDetailsById.set(m.id, {
         id: m.id,
-        title: m.title || '—',
-        game: m.game ? { title: m.game.title } : null,
-        creator_name: m.creator_name || '—',
-        thumbnail_url: m.thumbnail_url || '',
-        ml_rank: m.ml_rank,
-        ul_rank: m.ul_rank,
-        maxmode_tags: m.maxmode_tags,
-        calculated_enjoyment: m.calculated_enjoyment,
-        rng_rating: m.rng_rating,
-        avg_length_seconds: m.avg_length_seconds,
+        slug: m.slug || existing?.slug || '',
+        title: m.title || existing?.title || '—',
+        game: m.game ? { title: m.game.title } : existing?.game || null,
+        creator_name: m.creator_name || existing?.creator_name || '—',
+        description: m.description || existing?.description || '',
+        thumbnail_url: m.thumbnail_url || existing?.thumbnail_url || '',
+        ml_rank: m.ml_rank ?? existing?.ml_rank,
+        ul_rank: m.ul_rank ?? existing?.ul_rank,
+        list_entry: m.list_entry ?? existing?.list_entry,
+        maxmode_tags: m.maxmode_tags ?? existing?.maxmode_tags,
+        calculated_enjoyment: m.calculated_enjoyment ?? existing?.calculated_enjoyment,
+        rng_rating: m.rng_rating ?? existing?.rng_rating,
+        avg_length_seconds: m.avg_length_seconds ?? existing?.avg_length_seconds,
       });
     }
   }
@@ -436,6 +522,10 @@ function updateTabs() {
   tabML.classList.toggle('active', currentList === 'ml');
   tabUL.classList.toggle('active', currentList === 'ul');
   tabCompleted?.classList.toggle('active', currentList === 'completed');
+  const rankToggle = document.getElementById('completed-rank-toggle');
+  rankToggle?.classList.toggle('hidden', currentList !== 'completed');
+  document.getElementById('completed-rank-ml')?.classList.toggle('active', completedRankMode === 'ml');
+  document.getElementById('completed-rank-ul')?.classList.toggle('active', completedRankMode === 'ul');
 }
 
 function switchList(list) {
@@ -508,6 +598,38 @@ async function init() {
   document.getElementById('auth-close-btn')?.addEventListener('click', () => showAuthModal(false));
   document.querySelector('.auth-modal-backdrop')?.addEventListener('click', () => showAuthModal(false));
 
+  document.getElementById('detail-modal-close')?.addEventListener('click', hideDetailModal);
+  document.querySelector('.detail-modal-backdrop')?.addEventListener('click', hideDetailModal);
+
+  document.getElementById('detail-toggle-btn')?.addEventListener('click', (e) => {
+    const id = e.target.dataset.id;
+    if (!id) return;
+    if (completions.has(id) && currentList === 'completed') {
+      hideDetailModal();
+      showRemoveModal(id);
+      return;
+    }
+    toggleCompletion(id);
+    const completed = completions.has(id);
+    e.target.textContent = completed ? 'Remove from completed' : 'Mark complete';
+    const cards = cardContainer?.querySelectorAll(`[data-id="${id}"]`);
+    cards?.forEach((card) => {
+      card.classList.toggle('completed', completed);
+      const thumb = card.querySelector('.card-thumb');
+      const check = thumb?.querySelector('.check');
+      if (completed) {
+        if (!check) {
+          const span = document.createElement('span');
+          span.className = 'check';
+          span.setAttribute('aria-hidden', 'true');
+          span.textContent = '✓';
+          thumb?.appendChild(span);
+        }
+      } else if (check) check.remove();
+    });
+    updateProgress();
+  });
+
   document.getElementById('remove-modal-cancel')?.addEventListener('click', hideRemoveModal);
   document.getElementById('remove-modal-close')?.addEventListener('click', hideRemoveModal);
   document.querySelector('.remove-modal-backdrop')?.addEventListener('click', hideRemoveModal);
@@ -553,34 +675,15 @@ async function init() {
   tabUL?.addEventListener('click', () => switchList('ul'));
   tabCompleted?.addEventListener('click', () => switchList('completed'));
 
-  document.getElementById('refresh-cache-btn')?.addEventListener('click', async () => {
-    const btn = document.getElementById('refresh-cache-btn');
-    btn.disabled = true;
-    btn.textContent = 'Refreshing…';
-    try {
-      const res = await fetch('/api/refresh-cache', { method: 'POST' });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Refresh failed');
-      pageCache.clear();
-      idsInML.clear();
-      idsInUL.clear();
-      maxmodeDetailsById.clear();
-      listIdSetsBuilt = false;
-      motw = null;
-      if (currentList !== 'completed') {
-        await loadPage(currentPage, searchInput?.value || '');
-      } else {
-        await loadPage(currentPage, searchInput?.value || '');
-      }
-      const motwData = await fetchMOTW();
-      if (motwData) motw = motwData;
-      await buildListIdSets();
-      updateProgress();
-    } catch (e) {
-      alert('Refresh failed: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Refresh list';
-    }
+  document.getElementById('completed-rank-ml')?.addEventListener('click', () => {
+    completedRankMode = 'ml';
+    updateTabs();
+    if (currentList === 'completed') loadPage(currentPage, searchInput?.value || '');
+  });
+  document.getElementById('completed-rank-ul')?.addEventListener('click', () => {
+    completedRankMode = 'ul';
+    updateTabs();
+    if (currentList === 'completed') loadPage(currentPage, searchInput?.value || '');
   });
 
   paginationPrev?.addEventListener('click', () => {
@@ -625,6 +728,29 @@ async function init() {
   ]);
   await loadPage(1);
   buildListIdSets().then(() => updateProgress());
+
+  async function checkForUpdates() {
+    try {
+      const res = await fetch('/api/check-updates');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.updated) {
+        pageCache.clear();
+        idsInML.clear();
+        idsInUL.clear();
+        maxmodeDetailsById.clear();
+        listIdSetsBuilt = false;
+        motw = null;
+        const motwData = await fetchMOTW();
+        if (motwData) motw = motwData;
+        await loadPage(currentPage, searchInput?.value || '');
+        await buildListIdSets();
+        updateProgress();
+      }
+    } catch (_) {}
+  }
+  window.addEventListener('focus', checkForUpdates);
+  setInterval(checkForUpdates, 6 * 60 * 60 * 1000);
 }
 
 document.addEventListener('DOMContentLoaded', init);

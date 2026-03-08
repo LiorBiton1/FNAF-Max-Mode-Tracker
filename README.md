@@ -31,11 +31,11 @@ A personal tracker for FNAF Max Mode List completions. Fetches the list from [fn
 - **Progress** – Shows "X / Y completed" per list
 - **Dynamic search** – Results update as you type
 - **MOTW badge** – Highlights the current Max Mode of the Week when set
-- **List cache** – Maxmodes are cached in MongoDB; use "Refresh list" when fnafmml.com updates
+- **List cache** – Maxmodes are cached in MongoDB; updates are checked automatically when fnafmml.com changes
 
 ## Data Source
 
-Max mode data comes from [fnafmml.com](https://fnafmml.com)'s public API. On first run the server fetches both lists and stores them in MongoDB. Subsequent requests are served from the cache, avoiding repeated API calls. Use the **Refresh list** button to fetch the latest data when fnafmml updates their site.
+Max mode data comes from [fnafmml.com](https://fnafmml.com)'s public API. On first run the server fetches both lists and stores them in MongoDB. Subsequent requests are served from the cache, avoiding repeated API calls. The app automatically checks for updates when you focus the tab or every 6 hours.
 
 ## License
 
