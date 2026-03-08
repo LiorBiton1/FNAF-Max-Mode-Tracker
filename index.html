@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FNAF Max Mode Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <h1>FNAF Max Mode Tracker</h1>
+    <p class="subtitle">Track your completions locally — no submission to fnafmml.com</p>
+
+    <div class="tabs">
+      <button type="button" class="tab active" id="tab-ml" data-list="ml">Main List</button>
+      <button type="button" class="tab" id="tab-ul" data-list="ul">Unlimited List</button>
+    </div>
+
+    <div class="progress-area">
+      <span id="header-progress" class="progress-text">0 / 0 completed</span>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="search-box">
+        <input type="search" id="search-input" placeholder="Search (title, game, creator)..." aria-label="Search maxmodes">
+        <button type="button" id="search-btn">Search</button>
+      </div>
+      <div class="pagination">
+        <button type="button" class="page-btn" id="pagination-prev" disabled>Previous</button>
+        <span id="pagination-info" class="page-info">Page 1 of 1</span>
+        <button type="button" class="page-btn" id="pagination-next">Next</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div id="card-container" class="card-container"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
