@@ -47,10 +47,157 @@ body {
   margin: 0 auto;
 }
 
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .header h1 {
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.25rem 0;
   font-size: 1.5rem;
   font-weight: 700;
+}
+
+.auth-area {
+  flex-shrink: 0;
+}
+
+.auth-guest,
+.auth-logged {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.auth-username {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.auth-btn {
+  padding: 0.4rem 0.8rem;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.auth-btn:hover {
+  background: var(--accent-hover);
+}
+
+.auth-btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.auth-btn-outline:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Auth modal */
+.auth-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.auth-modal.hidden {
+  display: none !important;
+}
+
+.auth-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.auth-modal-content {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 340px;
+}
+
+.auth-modal-content h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.2rem;
+}
+
+.auth-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 1rem 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-form input {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-error {
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 0;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.auth-actions button {
+  flex: 1;
+}
+
+.auth-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.auth-close:hover {
+  color: var(--text-primary);
 }
 
 /* Tabs */

@@ -1,13 +1,16 @@
 /**
  * FNAF Max Mode Tracker
- * Fetches list from fnafmml.com API, tracks completions locally via localStorage.
- * No data is submitted to their servers.
+ * Fetches list from fnafmml.com API. Completions: localStorage (guest) or database (logged in).
  */
 
 const API_BASE = 'https://fnafmml.com/api';
 const STORAGE_KEY = 'fnaf-maxmode-completions';
 const STORAGE_KEY_ML = 'fnaf-mml-completions';
 const STORAGE_KEY_UL = 'fnaf-mul-completions';
+const TOKEN_KEY = 'fnaf-auth-token';
+
+let apiAvailable = false;
+let authToken = null;
 
 const CORS_PROXIES = [
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
@@ -46,25 +49,47 @@ let motw = null;
 let headerProgress, progressFill, cardContainer, paginationPrev, paginationNext, paginationInfo, searchInput, searchBtn;
 let tabML, tabUL;
 
-function loadCompletions() {
+async function loadCompletions() {
   try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    completions = new Set(Array.isArray(stored) ? stored : []);
+    let stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     const ml = JSON.parse(localStorage.getItem(STORAGE_KEY_ML) || '[]');
     const ul = JSON.parse(localStorage.getItem(STORAGE_KEY_UL) || '[]');
     if (ml.length > 0 || ul.length > 0) {
-      [...(Array.isArray(ml) ? ml : []), ...(Array.isArray(ul) ? ul : [])].forEach((id) => completions.add(id));
-      saveCompletions();
+      stored = [...new Set([...(Array.isArray(stored) ? stored : []), ...(Array.isArray(ml) ? ml : []), ...(Array.isArray(ul) ? ul : [])])];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
       localStorage.removeItem(STORAGE_KEY_ML);
       localStorage.removeItem(STORAGE_KEY_UL);
+    }
+    completions = new Set(Array.isArray(stored) ? stored : []);
+
+    if (apiAvailable && authToken) {
+      const res = await fetch('/api/completions', { headers: { Authorization: `Bearer ${authToken}` } });
+      if (res.ok) {
+        const data = await res.json();
+        completions = new Set(data.completions || []);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...completions]));
+      }
     }
   } catch (e) {
     completions = new Set();
   }
 }
 
-function saveCompletions() {
+function saveCompletionsLocal() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...completions]));
+}
+
+async function saveCompletions() {
+  saveCompletionsLocal();
+  if (apiAvailable && authToken) {
+    try {
+      await fetch('/api/completions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ completions: [...completions] }),
+      });
+    } catch (_) {}
+  }
 }
 
 function toggleCompletion(id) {
@@ -187,7 +212,7 @@ function setLoading(loading) {
 async function loadPage(page = currentPage, search = '') {
   if (window.location.protocol === 'file:') {
     setLoading(false);
-    cardContainer.innerHTML = '<p class="error-msg">Open this page via a local server to avoid CORS. Run: <code>python3 -m http.server 8000</code> in this folder, then visit <code>http://localhost:8000</code></p>';
+    cardContainer.innerHTML = '<p class="error-msg">Run <code>npm start</code> in this folder and visit the URL shown (e.g. http://localhost:3000) to use the app.</p>';
     return;
   }
   setLoading(true);
@@ -231,6 +256,37 @@ function switchList(list) {
   loadPage(1, searchInput?.value || '');
 }
 
+function showAuthModal(show) {
+  const modal = document.getElementById('auth-modal');
+  if (show) modal.classList.remove('hidden');
+  else modal.classList.add('hidden');
+}
+
+function updateAuthUI() {
+  const guest = document.getElementById('auth-guest');
+  const logged = document.getElementById('auth-logged');
+  const usernameEl = document.getElementById('auth-username');
+  if (authToken && apiAvailable) {
+    try {
+      const payload = JSON.parse(atob(authToken.split('.')[1]));
+      usernameEl.textContent = payload.username || 'User';
+    } catch {
+      usernameEl.textContent = 'User';
+    }
+    guest.classList.add('hidden');
+    logged.classList.remove('hidden');
+  } else {
+    guest.classList.remove('hidden');
+    if (apiAvailable) {
+      document.getElementById('auth-show-btn').textContent = 'Login / Register';
+    } else {
+      document.getElementById('auth-show-btn').textContent = 'Server offline';
+      document.getElementById('auth-show-btn').disabled = true;
+    }
+    logged.classList.add('hidden');
+  }
+}
+
 async function init() {
   headerProgress = document.getElementById('header-progress');
   progressFill = document.getElementById('progress-fill');
@@ -243,7 +299,84 @@ async function init() {
   tabML = document.getElementById('tab-ml');
   tabUL = document.getElementById('tab-ul');
 
-  loadCompletions();
+  try {
+    const health = await fetch('/api/health');
+    apiAvailable = health.ok;
+  } catch {
+    apiAvailable = false;
+  }
+
+  authToken = localStorage.getItem(TOKEN_KEY);
+  updateAuthUI();
+
+  document.getElementById('auth-show-btn')?.addEventListener('click', () => showAuthModal(true));
+  document.getElementById('auth-close-btn')?.addEventListener('click', () => showAuthModal(false));
+  document.querySelector('.auth-modal-backdrop')?.addEventListener('click', () => showAuthModal(false));
+
+  document.getElementById('auth-logout-btn')?.addEventListener('click', () => {
+    authToken = null;
+    localStorage.removeItem(TOKEN_KEY);
+    updateAuthUI();
+    loadCompletions();
+    updateProgress();
+    const cards = cardContainer?.querySelectorAll('.card');
+    cards?.forEach((c) => {
+      const id = c.dataset.id;
+      c.classList.toggle('completed', completions.has(id));
+    });
+  });
+
+  document.getElementById('auth-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('auth-username-input').value.trim().toLowerCase();
+    const password = document.getElementById('auth-password-input').value;
+    const action = e.submitter?.value || 'login';
+    const errEl = document.getElementById('auth-error');
+    errEl.classList.add('hidden');
+    try {
+      const res = await fetch(`/api/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Request failed';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      authToken = data.token;
+      localStorage.setItem(TOKEN_KEY, authToken);
+      showAuthModal(false);
+      document.getElementById('auth-username-input').value = '';
+      document.getElementById('auth-password-input').value = '';
+      updateAuthUI();
+      await loadCompletions();
+      updateProgress();
+      const cards = cardContainer?.querySelectorAll('.card');
+      cards?.forEach((card) => {
+        const id = card.dataset.id;
+        const done = completions.has(id);
+        card.classList.toggle('completed', done);
+        const thumb = card.querySelector('.card-thumb');
+        const check = thumb?.querySelector('.check');
+        if (done) {
+          if (!check) {
+            const span = document.createElement('span');
+            span.className = 'check';
+            span.setAttribute('aria-hidden', 'true');
+            span.textContent = '✓';
+            thumb?.appendChild(span);
+          }
+        } else if (check) check.remove();
+      });
+    } catch (err) {
+      errEl.textContent = 'Network error';
+      errEl.classList.remove('hidden');
+    }
+  });
+
+  await loadCompletions();
 
   tabML?.addEventListener('click', () => switchList('ml'));
   tabUL?.addEventListener('click', () => switchList('ul'));

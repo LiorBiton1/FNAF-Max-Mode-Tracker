@@ -8,8 +8,39 @@
 </head>
 <body>
   <header class="header">
-    <h1>FNAF Max Mode Tracker</h1>
-    <p class="subtitle">Track your completions locally — no submission to fnafmml.com</p>
+    <div class="header-row">
+      <div>
+        <h1>FNAF Max Mode Tracker</h1>
+        <p class="subtitle">Track your completions — no submission to fnafmml.com</p>
+      </div>
+      <div class="auth-area">
+        <div id="auth-guest" class="auth-guest">
+          <button type="button" class="auth-btn" id="auth-show-btn">Login / Register</button>
+        </div>
+        <div id="auth-logged" class="auth-logged hidden">
+          <span class="auth-username" id="auth-username"></span>
+          <button type="button" class="auth-btn auth-btn-outline" id="auth-logout-btn">Logout</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="auth-modal" class="auth-modal hidden">
+      <div class="auth-modal-backdrop"></div>
+      <div class="auth-modal-content">
+        <h2>Login or Register</h2>
+        <p class="auth-hint">Create an account to save completions to the database.</p>
+        <form id="auth-form" class="auth-form">
+          <input type="text" id="auth-username-input" placeholder="Username" required minlength="2" autocomplete="username">
+          <input type="password" id="auth-password-input" placeholder="Password (min 6)" required minlength="6" autocomplete="current-password">
+          <p id="auth-error" class="auth-error hidden"></p>
+          <div class="auth-actions">
+            <button type="submit" name="action" value="login" class="auth-btn">Login</button>
+            <button type="submit" name="action" value="register" class="auth-btn auth-btn-outline">Register</button>
+          </div>
+        </form>
+        <button type="button" class="auth-close" id="auth-close-btn" aria-label="Close">&times;</button>
+      </div>
+    </div>
 
     <div class="tabs">
       <button type="button" class="tab active" id="tab-ml" data-list="ml">Main List</button>
