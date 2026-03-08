@@ -200,6 +200,68 @@ body {
   color: var(--text-primary);
 }
 
+/* Remove confirmation modal */
+.remove-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.remove-modal.hidden {
+  display: none !important;
+}
+
+.remove-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.remove-modal-content {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 380px;
+}
+
+.remove-modal-content h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.2rem;
+}
+
+.remove-modal-title {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0 0 1.25rem 0;
+  line-height: 1.4;
+}
+
+.remove-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.remove-modal-actions button {
+  min-width: 6rem;
+}
+
+/* Empty state */
+.empty-state {
+  color: var(--text-muted);
+  font-size: 1rem;
+  margin: 0;
+  padding: 2rem;
+  text-align: center;
+}
+
 /* Tabs */
 .tabs {
   display: flex;
@@ -338,6 +400,27 @@ body {
 
 .search-box button:hover {
   background: var(--accent-hover);
+}
+
+.refresh-btn {
+  padding: 0.5rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+}
+
+.refresh-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Card container grid */

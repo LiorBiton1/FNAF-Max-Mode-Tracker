@@ -37,6 +37,9 @@ async function fetchWithCorsFallback(url) {
 }
 
 let completions = new Set();
+let idsInML = new Set();
+let idsInUL = new Set();
+const maxmodeDetailsById = new Map();
 let currentList = 'ml';
 let currentPage = 1;
 let totalPages = 17;
@@ -45,9 +48,17 @@ let fullListTotalML = 845;
 let fullListTotalUL = 0;
 let motw = null;
 
+const pageCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const COMPLETED_PAGE_SIZE = 35;
+
+function cacheKey(list, page, search) {
+  return `${list}:${page}:${(search || '').trim()}`;
+}
+
 // DOM elements
 let headerProgress, progressFill, cardContainer, paginationPrev, paginationNext, paginationInfo, searchInput, searchBtn;
-let tabML, tabUL;
+let tabML, tabUL, tabCompleted;
 
 async function loadCompletions() {
   try {
@@ -92,14 +103,47 @@ async function saveCompletions() {
   }
 }
 
+let pendingRemoveId = null;
+
+function showRemoveModal(id) {
+  const d = maxmodeDetailsById.get(id);
+  const title = d?.title || 'this challenge';
+  pendingRemoveId = id;
+  document.getElementById('remove-modal-title').textContent = `Remove "${title}" from your completed list?`;
+  document.getElementById('remove-modal').classList.remove('hidden');
+}
+
+function hideRemoveModal() {
+  pendingRemoveId = null;
+  document.getElementById('remove-modal').classList.add('hidden');
+}
+
+function confirmRemove() {
+  if (!pendingRemoveId) return;
+  const id = pendingRemoveId;
+  hideRemoveModal();
+  completions.delete(id);
+  saveCompletions();
+  updateProgress();
+  loadPage(currentPage, searchInput?.value || '');
+}
+
 function toggleCompletion(id) {
   if (completions.has(id)) {
+    if (currentList === 'completed') {
+      showRemoveModal(id);
+      return;
+    }
     completions.delete(id);
   } else {
     completions.add(id);
   }
   saveCompletions();
   updateProgress();
+  if (currentList === 'completed') {
+    loadPage(currentPage, searchInput?.value || '');
+    return;
+  }
   const cards = cardContainer?.querySelectorAll(`[data-id="${id}"]`);
   cards?.forEach((card) => {
     card.classList.toggle('completed', completions.has(id));
@@ -120,16 +164,29 @@ function toggleCompletion(id) {
 }
 
 function getCompletionsCount(list) {
-  return completions.size;
+  if (list === 'completed') return completions.size;
+  const ids = list === 'ml' ? idsInML : idsInUL;
+  if (ids.size === 0) return completions.size;
+  let count = 0;
+  for (const id of completions) {
+    if (ids.has(id)) count++;
+  }
+  return count;
 }
 
 function getFullListTotal() {
+  if (currentList === 'completed') return completions.size;
   return currentList === 'ml' ? fullListTotalML : fullListTotalUL;
 }
 
 function updateProgress() {
   const count = getCompletionsCount(currentList);
   const fullTotal = getFullListTotal();
+  if (currentList === 'completed') {
+    headerProgress.textContent = `${count} completed`;
+    if (progressFill) progressFill.style.width = '100%';
+    return;
+  }
   const pct = fullTotal > 0 ? Math.round((count / fullTotal) * 100) : 0;
   headerProgress.textContent = `${count} / ${fullTotal} completed (${pct}%)`;
   if (progressFill && fullTotal > 0) {
@@ -137,15 +194,83 @@ function updateProgress() {
   }
 }
 
+function getCompletedPageData(page, search) {
+  const searchVal = (search || '').trim().toLowerCase();
+  const fallback = (id) => ({
+    id,
+    title: 'Unknown',
+    game: null,
+    creator_name: '—',
+    thumbnail_url: '',
+    ml_rank: null,
+    ul_rank: null,
+    maxmode_tags: [],
+    calculated_enjoyment: null,
+    rng_rating: null,
+    avg_length_seconds: null,
+    list_entry: { position: null },
+  });
+  let items = [...completions].map((id) => {
+    const d = maxmodeDetailsById.get(id);
+    const m = d ? { ...d, list_entry: { position: d.ml_rank ?? d.ul_rank } } : fallback(id);
+    return m;
+  });
+  if (searchVal) {
+    items = items.filter(
+      (m) =>
+        (m.title || '').toLowerCase().includes(searchVal) ||
+        (m.game?.title || '').toLowerCase().includes(searchVal) ||
+        (m.creator_name || '').toLowerCase().includes(searchVal)
+    );
+  }
+  items.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+  const totalCount = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / COMPLETED_PAGE_SIZE));
+  const start = (page - 1) * COMPLETED_PAGE_SIZE;
+  const maxmodes = items.slice(start, start + COMPLETED_PAGE_SIZE);
+  return { maxmodes, totalCount, totalPages };
+}
+
 async function fetchPage(list, page, search = '') {
+  const key = cacheKey(list, page, search);
+  const cached = pageCache.get(key);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
   const params = new URLSearchParams({ list, page: String(page) });
-  if (search.trim()) params.set('search', search.trim());
-  const url = `${API_BASE}/maxmodes/list?${params}`;
-  const res = await fetchWithCorsFallback(url);
-  return res.json();
+  if ((search || '').trim()) params.set('search', search.trim());
+  try {
+    const res = await fetch(`/api/maxmodes/list?${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      pageCache.set(key, { data, at: Date.now() });
+      return data;
+    }
+    if (res.status === 503) throw new Error('Cache empty');
+  } catch (_) {
+    const url = `${API_BASE}/maxmodes/list?${params}`;
+    const res = await fetchWithCorsFallback(url);
+    const data = await res.json();
+    pageCache.set(key, { data, at: Date.now() });
+    return data;
+  }
+  throw new Error('Failed to fetch');
+}
+
+function prefetchPage(list, page, search) {
+  const key = cacheKey(list, page, search);
+  if (pageCache.has(key)) return;
+  fetchPage(list, page, search).catch(() => {});
 }
 
 async function fetchMOTW() {
+  try {
+    const res = await fetch('/api/motw');
+    if (res.ok) {
+      const data = await res.json();
+      return data.motw;
+    }
+  } catch (_) {
+    //
+  }
   const res = await fetchWithCorsFallback(`${API_BASE}/motw`);
   const data = await res.json();
   return data.motw;
@@ -199,7 +324,12 @@ function escapeHtml(s) {
 
 function renderCards(maxmodes, list) {
   cardContainer.innerHTML = '';
-  for (const m of maxmodes || []) {
+  const items = maxmodes || [];
+  if (items.length === 0 && list === 'completed') {
+    cardContainer.innerHTML = '<p class="empty-state">No completed challenges yet. Complete some from the Main or Unlimited list!</p>';
+    return;
+  }
+  for (const m of items) {
     cardContainer.appendChild(renderCard(m, list));
   }
 }
@@ -209,25 +339,82 @@ function setLoading(loading) {
   if (loading) cardContainer.innerHTML = '<p class="loading-msg">Loading…</p>';
 }
 
+function addIdsFromPage(list, maxmodes) {
+  const ids = list === 'ml' ? idsInML : idsInUL;
+  for (const m of maxmodes || []) {
+    if (m?.id) {
+      ids.add(m.id);
+      maxmodeDetailsById.set(m.id, {
+        id: m.id,
+        title: m.title || '—',
+        game: m.game ? { title: m.game.title } : null,
+        creator_name: m.creator_name || '—',
+        thumbnail_url: m.thumbnail_url || '',
+        ml_rank: m.ml_rank,
+        ul_rank: m.ul_rank,
+        maxmode_tags: m.maxmode_tags,
+        calculated_enjoyment: m.calculated_enjoyment,
+        rng_rating: m.rng_rating,
+        avg_length_seconds: m.avg_length_seconds,
+      });
+    }
+  }
+}
+
+let listIdSetsBuilt = false;
+
+async function buildListIdSets() {
+  if (listIdSetsBuilt) return;
+  async function fetchAllIds(list) {
+    const ids = list === 'ml' ? idsInML : idsInUL;
+    let page = 1;
+    let total = 1;
+    while (page <= total) {
+      try {
+        const data = await fetchPage(list, page, '');
+        total = data.totalPages ?? 1;
+        addIdsFromPage(list, data.maxmodes);
+        page++;
+      } catch {
+        break;
+      }
+    }
+  }
+  await Promise.all([fetchAllIds('ml'), fetchAllIds('ul')]);
+  listIdSetsBuilt = true;
+  updateProgress();
+}
+
 async function loadPage(page = currentPage, search = '') {
   if (window.location.protocol === 'file:') {
     setLoading(false);
     cardContainer.innerHTML = '<p class="error-msg">Run <code>npm start</code> in this folder and visit the URL shown (e.g. http://localhost:3000) to use the app.</p>';
     return;
   }
+  const searchVal = (search || searchInput?.value || '').trim();
   setLoading(true);
   try {
-    const data = await fetchPage(currentList, page, search);
+    let data;
+    if (currentList === 'completed') {
+      data = getCompletedPageData(page, searchVal);
+    } else {
+      data = await fetchPage(currentList, page, searchVal);
+      if (!searchVal) {
+        if (currentList === 'ml') fullListTotalML = data.totalCount ?? 845;
+        else fullListTotalUL = data.totalCount ?? 0;
+        addIdsFromPage(currentList, data.maxmodes);
+      }
+    }
     totalPages = data.totalPages ?? 17;
     totalCount = data.totalCount ?? 845;
-    if (!search.trim()) {
-      if (currentList === 'ml') fullListTotalML = data.totalCount ?? 845;
-      else fullListTotalUL = data.totalCount ?? 0;
-    }
     renderCards(data.maxmodes || [], currentList);
     updateProgress();
     updatePagination();
     updateTabs();
+    if (currentList !== 'completed') {
+      prefetchPage(currentList, page + 1, searchVal);
+      if (page > 1) prefetchPage(currentList, page - 1, searchVal);
+    }
   } catch (e) {
     const isFile = window.location.protocol === 'file:';
     const hint = isFile
@@ -248,6 +435,7 @@ function updatePagination() {
 function updateTabs() {
   tabML.classList.toggle('active', currentList === 'ml');
   tabUL.classList.toggle('active', currentList === 'ul');
+  tabCompleted?.classList.toggle('active', currentList === 'completed');
 }
 
 function switchList(list) {
@@ -275,6 +463,7 @@ function updateAuthUI() {
     }
     guest.classList.add('hidden');
     logged.classList.remove('hidden');
+    tabCompleted?.classList.remove('hidden');
   } else {
     guest.classList.remove('hidden');
     if (apiAvailable) {
@@ -284,6 +473,11 @@ function updateAuthUI() {
       document.getElementById('auth-show-btn').disabled = true;
     }
     logged.classList.add('hidden');
+    tabCompleted?.classList.add('hidden');
+    if (currentList === 'completed') {
+      currentList = 'ml';
+      loadPage(1, searchInput?.value || '');
+    }
   }
 }
 
@@ -298,6 +492,7 @@ async function init() {
   searchBtn = document.getElementById('search-btn');
   tabML = document.getElementById('tab-ml');
   tabUL = document.getElementById('tab-ul');
+  tabCompleted = document.getElementById('tab-completed');
 
   try {
     const health = await fetch('/api/health');
@@ -313,17 +508,15 @@ async function init() {
   document.getElementById('auth-close-btn')?.addEventListener('click', () => showAuthModal(false));
   document.querySelector('.auth-modal-backdrop')?.addEventListener('click', () => showAuthModal(false));
 
+  document.getElementById('remove-modal-cancel')?.addEventListener('click', hideRemoveModal);
+  document.getElementById('remove-modal-close')?.addEventListener('click', hideRemoveModal);
+  document.querySelector('.remove-modal-backdrop')?.addEventListener('click', hideRemoveModal);
+  document.getElementById('remove-modal-confirm')?.addEventListener('click', confirmRemove);
+
   document.getElementById('auth-logout-btn')?.addEventListener('click', () => {
     authToken = null;
     localStorage.removeItem(TOKEN_KEY);
-    updateAuthUI();
-    loadCompletions();
-    updateProgress();
-    const cards = cardContainer?.querySelectorAll('.card');
-    cards?.forEach((c) => {
-      const id = c.dataset.id;
-      c.classList.toggle('completed', completions.has(id));
-    });
+    location.reload();
   });
 
   document.getElementById('auth-form')?.addEventListener('submit', async (e) => {
@@ -347,29 +540,7 @@ async function init() {
       }
       authToken = data.token;
       localStorage.setItem(TOKEN_KEY, authToken);
-      showAuthModal(false);
-      document.getElementById('auth-username-input').value = '';
-      document.getElementById('auth-password-input').value = '';
-      updateAuthUI();
-      await loadCompletions();
-      updateProgress();
-      const cards = cardContainer?.querySelectorAll('.card');
-      cards?.forEach((card) => {
-        const id = card.dataset.id;
-        const done = completions.has(id);
-        card.classList.toggle('completed', done);
-        const thumb = card.querySelector('.card-thumb');
-        const check = thumb?.querySelector('.check');
-        if (done) {
-          if (!check) {
-            const span = document.createElement('span');
-            span.className = 'check';
-            span.setAttribute('aria-hidden', 'true');
-            span.textContent = '✓';
-            thumb?.appendChild(span);
-          }
-        } else if (check) check.remove();
-      });
+      location.reload();
     } catch (err) {
       errEl.textContent = 'Network error';
       errEl.classList.remove('hidden');
@@ -380,6 +551,37 @@ async function init() {
 
   tabML?.addEventListener('click', () => switchList('ml'));
   tabUL?.addEventListener('click', () => switchList('ul'));
+  tabCompleted?.addEventListener('click', () => switchList('completed'));
+
+  document.getElementById('refresh-cache-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('refresh-cache-btn');
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+    try {
+      const res = await fetch('/api/refresh-cache', { method: 'POST' });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Refresh failed');
+      pageCache.clear();
+      idsInML.clear();
+      idsInUL.clear();
+      maxmodeDetailsById.clear();
+      listIdSetsBuilt = false;
+      motw = null;
+      if (currentList !== 'completed') {
+        await loadPage(currentPage, searchInput?.value || '');
+      } else {
+        await loadPage(currentPage, searchInput?.value || '');
+      }
+      const motwData = await fetchMOTW();
+      if (motwData) motw = motwData;
+      await buildListIdSets();
+      updateProgress();
+    } catch (e) {
+      alert('Refresh failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Refresh list';
+    }
+  });
 
   paginationPrev?.addEventListener('click', () => {
     if (currentPage > 1) {
@@ -416,8 +618,13 @@ async function init() {
     }, 350);
   });
 
-  motw = await fetchMOTW();
-  loadPage(1);
+  await Promise.all([
+    loadCompletions(),
+    (async () => { motw = await fetchMOTW(); })(),
+    fetchPage('ml', 1, '').catch(() => null),
+  ]);
+  await loadPage(1);
+  buildListIdSets().then(() => updateProgress());
 }
 
 document.addEventListener('DOMContentLoaded', init);
